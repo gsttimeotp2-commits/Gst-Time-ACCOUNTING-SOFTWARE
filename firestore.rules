@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default Deny All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Diagnostic / Healthcheck test document
+    match /test/connection {
+      allow read: if isSignedIn();
+    }
+
+    // User business data & subcollections
+    match /users/{userId} {
+      allow get: if isUser(userId);
+      allow create, update: if isUser(userId) && incoming().userId == request.auth.uid;
+
+      // Profile & Business Configuration
+      match /profile {
+        allow get: if isUser(userId);
+        allow create: if isUser(userId) 
+          && incoming().userId == request.auth.uid
+          && incoming().businessName is string 
+          && incoming().businessName.size() <= 200;
+        allow update: if isUser(userId) 
+          && incoming().userId == existing().userId
+          && incoming().businessName is string 
+          && incoming().businessName.size() <= 200;
+        allow delete: if isUser(userId);
+      }
+
+      // Parties: Customers and Suppliers
+      match /parties/{partyId} {
+        allow get, list: if isUser(userId);
+        allow create: if isUser(userId) 
+          && isValidId(partyId) 
+          && incoming().userId == request.auth.uid 
+          && incoming().name is string 
+          && incoming().name.size() <= 150;
+        allow update: if isUser(userId) 
+          && isValidId(partyId) 
+          && incoming().userId == existing().userId 
+          && incoming().name is string 
+          && incoming().name.size() <= 150;
+        allow delete: if isUser(userId) && isValidId(partyId);
+      }
+
+      // Items: Inventory Products & Services
+      match /items/{itemId} {
+        allow get, list: if isUser(userId);
+        allow create: if isUser(userId) 
+          && isValidId(itemId) 
+          && incoming().userId == request.auth.uid 
+          && incoming().name is string 
+          && incoming().name.size() <= 200;
+        allow update: if isUser(userId) 
+          && isValidId(itemId) 
+          && incoming().userId == existing().userId 
+          && incoming().name is string 
+          && incoming().name.size() <= 200;
+        allow delete: if isUser(userId) && isValidId(itemId);
+      }
+
+      // Transactions: Invoices, Purchases, Returns
+      match /transactions/{transactionId} {
+        allow get, list: if isUser(userId);
+        allow create: if isUser(userId) 
+          && isValidId(transactionId) 
+          && incoming().userId == request.auth.uid 
+          && incoming().invoiceNumber is string 
+          && incoming().invoiceNumber.size() <= 50;
+        allow update: if isUser(userId) 
+          && isValidId(transactionId) 
+          && incoming().userId == existing().userId;
+        allow delete: if isUser(userId) && isValidId(transactionId);
+      }
+
+      // Expenses: Overhead and Operational Expenses
+      match /expenses/{expenseId} {
+        allow get, list: if isUser(userId);
+        allow create: if isUser(userId) 
+          && isValidId(expenseId) 
+          && incoming().userId == request.auth.uid 
+          && incoming().amount is number;
+        allow update: if isUser(userId) 
+          && isValidId(expenseId) 
+          && incoming().userId == existing().userId;
+        allow delete: if isUser(userId) && isValidId(expenseId);
+      }
+
+      // Payments: Payments In & Payments Out
+      match /payments/{paymentId} {
+        allow get, list: if isUser(userId);
+        allow create: if isUser(userId) 
+          && isValidId(paymentId) 
+          && incoming().userId == request.auth.uid 
+          && incoming().amount is number;
+        allow update: if isUser(userId) 
+          && isValidId(paymentId) 
+          && incoming().userId == existing().userId;
+        allow delete: if isUser(userId) && isValidId(paymentId);
+      }
+
+      // Subscriptions & Recurring Invoices
+      match /subscriptions/{subscriptionId} {
+        allow get, list: if isUser(userId);
+        allow create: if isUser(userId) 
+          && isValidId(subscriptionId) 
+          && incoming().userId == request.auth.uid 
+          && incoming().clientName is string 
+          && incoming().clientName.size() <= 150;
+        allow update: if isUser(userId) 
+          && isValidId(subscriptionId) 
+          && incoming().userId == existing().userId;
+        allow delete: if isUser(userId) && isValidId(subscriptionId);
+      }
+    }
+  }
+}
